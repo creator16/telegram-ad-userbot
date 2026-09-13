@@ -173,7 +173,6 @@ def register_handlers(app, db, campaign_manager):
         )
 
         if match:
-
             seconds = int(match.group(1))
 
             if seconds < 10:
@@ -204,7 +203,6 @@ def register_handlers(app, db, campaign_manager):
         )
 
         if match:
-
             seconds = int(match.group(1))
 
             if seconds < 60:
@@ -365,28 +363,35 @@ def register_handlers(app, db, campaign_manager):
         # -------------------------
 
         if command.upper() == "$CANCEL":
-
             if campaign_manager.running:
-
                 await message.reply_text(
                     "⚠️ Stop the running campaign first."
                 )
-
                 return
 
             campaign = db.get_latest_campaign()
 
             if campaign is None:
-
                 await message.reply_text(
                     "No campaign."
                 )
-
                 return
 
-            db.update_campaign_status(
-                campaign["id"],
+            if campaign["status"] in {
+                "COMPLETED",
                 "CANCELLED",
+            }:
+                await message.reply_text(
+                    (
+                        f"Campaign #{campaign['id']} "
+                        f"is already {campaign['status']}."
+                    )
+                )
+                return
+
+            db.mark_campaign_completed(
+                campaign["id"],
+                status="CANCELLED",
             )
 
             await message.reply_text(

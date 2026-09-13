@@ -16,7 +16,7 @@ class Database:
 
         self._create_tables()
 
-    def _create_tables(self):
+    def _create_tables(self) -> None:
         cursor = self.conn.cursor()
 
         cursor.executescript(
@@ -58,7 +58,6 @@ class Database:
                 sent_at TEXT,
                 error TEXT,
                 retry_count INTEGER DEFAULT 0,
-
                 UNIQUE(
                     campaign_id,
                     chat_id,
@@ -81,7 +80,7 @@ class Database:
     # Settings
     # -------------------------
 
-    def set_setting(self, key: str, value: str):
+    def set_setting(self, key: str, value: str) -> None:
         self.conn.execute(
             """
             INSERT INTO settings(key, value)
@@ -98,9 +97,13 @@ class Database:
         self,
         key: str,
         default: Optional[str] = None,
-    ):
+    ) -> Optional[str]:
         row = self.conn.execute(
-            "SELECT value FROM settings WHERE key = ?",
+            """
+            SELECT value
+            FROM settings
+            WHERE key = ?
+            """,
             (key,),
         ).fetchone()
 
@@ -119,7 +122,7 @@ class Database:
         title: str,
         username: Optional[str],
         archived: bool,
-    ):
+    ) -> None:
         self.conn.execute(
             """
             INSERT INTO targets(
@@ -129,7 +132,6 @@ class Database:
                 archived
             )
             VALUES (?, ?, ?, ?)
-
             ON CONFLICT(chat_id)
             DO UPDATE SET
                 title=excluded.title,
@@ -142,6 +144,16 @@ class Database:
                 username,
                 int(archived),
             ),
+        )
+
+        self.conn.commit()
+
+    def mark_all_targets_unarchived(self) -> None:
+        self.conn.execute(
+            """
+            UPDATE targets
+            SET archived = 0
+            """
         )
 
         self.conn.commit()
@@ -167,7 +179,7 @@ class Database:
             (chat_id,),
         ).fetchone()
 
-    def mark_sent(self, chat_id: int):
+    def mark_sent(self, chat_id: int) -> None:
         self.conn.execute(
             """
             UPDATE targets
@@ -190,7 +202,6 @@ class Database:
         message: str,
         repeat_count: int,
     ) -> int:
-
         cursor = self.conn.execute(
             """
             INSERT INTO campaigns(
@@ -233,7 +244,7 @@ class Database:
         self,
         campaign_id: int,
         status: str,
-    ):
+    ) -> None:
         self.conn.execute(
             """
             UPDATE campaigns
@@ -248,11 +259,53 @@ class Database:
 
         self.conn.commit()
 
+    def mark_campaign_started(
+        self,
+        campaign_id: int,
+    ) -> None:
+        self.conn.execute(
+            """
+            UPDATE campaigns
+            SET
+                status = 'RUNNING',
+                started_at = COALESCE(
+                    started_at,
+                    CURRENT_TIMESTAMP
+                ),
+                completed_at = NULL
+            WHERE id = ?
+            """,
+            (campaign_id,),
+        )
+
+        self.conn.commit()
+
+    def mark_campaign_completed(
+        self,
+        campaign_id: int,
+        status: str = "COMPLETED",
+    ) -> None:
+        self.conn.execute(
+            """
+            UPDATE campaigns
+            SET
+                status = ?,
+                completed_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (
+                status,
+                campaign_id,
+            ),
+        )
+
+        self.conn.commit()
+
     def set_campaign_round(
         self,
         campaign_id: int,
         round_number: int,
-    ):
+    ) -> None:
         self.conn.execute(
             """
             UPDATE campaigns
@@ -275,7 +328,7 @@ class Database:
         self,
         campaign_id: int,
         round_number: int,
-    ):
+    ) -> None:
         targets = self.get_targets()
 
         for target in targets:
@@ -309,14 +362,13 @@ class Database:
                 t.title,
                 t.username
             FROM campaign_targets ct
-
             JOIN targets t
                 ON t.chat_id = ct.chat_id
-
             WHERE ct.campaign_id = ?
               AND ct.round_number = ?
               AND ct.status = 'PENDING'
-
+              AND t.enabled = 1
+              AND t.archived = 1
             ORDER BY t.title COLLATE NOCASE
             """,
             (
@@ -328,7 +380,7 @@ class Database:
     def mark_campaign_target_sent(
         self,
         campaign_target_id: int,
-    ):
+    ) -> None:
         self.conn.execute(
             """
             UPDATE campaign_targets
@@ -346,7 +398,7 @@ class Database:
         self,
         campaign_target_id: int,
         error: str,
-    ):
+    ) -> None:
         self.conn.execute(
             """
             UPDATE campaign_targets
@@ -372,7 +424,7 @@ class Database:
         self,
         event_type: str,
         message: str,
-    ):
+    ) -> None:
         self.conn.execute(
             """
             INSERT INTO events(

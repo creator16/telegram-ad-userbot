@@ -9,19 +9,17 @@ GROUP_TYPES = {
 
 async def sync_archived_groups(app, db) -> int:
     """
-    Synchronize groups that the user has manually placed in Archive.
+    Synchronize the user's currently archived groups.
 
-    این تابع:
-    - گروهی را Join نمی‌کند.
-    - گروهی را Archive نمی‌کند.
-    - گروهی را Leave نمی‌کند.
-    - فقط وضعیت فعلی Dialogها را می‌خواند.
+    This function does not join, leave, archive, or unarchive anything.
+    It only reads the current Telegram dialog state.
     """
+
+    db.mark_all_targets_unarchived()
 
     count = 0
 
     async for dialog in app.get_dialogs():
-
         chat = dialog.chat
 
         if chat.type not in GROUP_TYPES:
@@ -54,7 +52,6 @@ async def list_archived_groups(app):
     results = []
 
     async for dialog in app.get_dialogs():
-
         chat = dialog.chat
 
         if chat.type not in GROUP_TYPES:
