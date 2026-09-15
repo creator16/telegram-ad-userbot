@@ -4,6 +4,7 @@ from typing import Optional
 
 
 class Database:
+
     def __init__(self, path: Path):
         self.path = path
 
@@ -17,9 +18,8 @@ class Database:
         self._create_tables()
 
     def _create_tables(self) -> None:
-        cursor = self.conn.cursor()
 
-        cursor.executescript(
+        self.conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
@@ -58,6 +58,7 @@ class Database:
                 sent_at TEXT,
                 error TEXT,
                 retry_count INTEGER DEFAULT 0,
+
                 UNIQUE(
                     campaign_id,
                     chat_id,
@@ -80,7 +81,12 @@ class Database:
     # Settings
     # -------------------------
 
-    def set_setting(self, key: str, value: str) -> None:
+    def set_setting(
+        self,
+        key: str,
+        value: str,
+    ) -> None:
+
         self.conn.execute(
             """
             INSERT INTO settings(key, value)
@@ -98,6 +104,7 @@ class Database:
         key: str,
         default: Optional[str] = None,
     ) -> Optional[str]:
+
         row = self.conn.execute(
             """
             SELECT value
@@ -123,6 +130,7 @@ class Database:
         username: Optional[str],
         archived: bool,
     ) -> None:
+
         self.conn.execute(
             """
             INSERT INTO targets(
@@ -132,6 +140,7 @@ class Database:
                 archived
             )
             VALUES (?, ?, ?, ?)
+
             ON CONFLICT(chat_id)
             DO UPDATE SET
                 title=excluded.title,
@@ -149,6 +158,7 @@ class Database:
         self.conn.commit()
 
     def mark_all_targets_unarchived(self) -> None:
+
         self.conn.execute(
             """
             UPDATE targets
@@ -159,6 +169,7 @@ class Database:
         self.conn.commit()
 
     def get_targets(self):
+
         return self.conn.execute(
             """
             SELECT *
@@ -170,6 +181,7 @@ class Database:
         ).fetchall()
 
     def get_target(self, chat_id: int):
+
         return self.conn.execute(
             """
             SELECT *
@@ -180,6 +192,7 @@ class Database:
         ).fetchone()
 
     def mark_sent(self, chat_id: int) -> None:
+
         self.conn.execute(
             """
             UPDATE targets
@@ -202,6 +215,7 @@ class Database:
         message: str,
         repeat_count: int,
     ) -> int:
+
         cursor = self.conn.execute(
             """
             INSERT INTO campaigns(
@@ -221,6 +235,7 @@ class Database:
         return cursor.lastrowid
 
     def get_campaign(self, campaign_id: int):
+
         return self.conn.execute(
             """
             SELECT *
@@ -231,6 +246,7 @@ class Database:
         ).fetchone()
 
     def get_latest_campaign(self):
+
         return self.conn.execute(
             """
             SELECT *
@@ -245,6 +261,7 @@ class Database:
         campaign_id: int,
         status: str,
     ) -> None:
+
         self.conn.execute(
             """
             UPDATE campaigns
@@ -263,6 +280,7 @@ class Database:
         self,
         campaign_id: int,
     ) -> None:
+
         self.conn.execute(
             """
             UPDATE campaigns
@@ -285,6 +303,7 @@ class Database:
         campaign_id: int,
         status: str = "COMPLETED",
     ) -> None:
+
         self.conn.execute(
             """
             UPDATE campaigns
@@ -306,6 +325,7 @@ class Database:
         campaign_id: int,
         round_number: int,
     ) -> None:
+
         self.conn.execute(
             """
             UPDATE campaigns
@@ -321,7 +341,7 @@ class Database:
         self.conn.commit()
 
     # -------------------------
-    # Campaign targets
+    # Campaign Targets
     # -------------------------
 
     def prepare_campaign_targets(
@@ -329,9 +349,11 @@ class Database:
         campaign_id: int,
         round_number: int,
     ) -> None:
+
         targets = self.get_targets()
 
         for target in targets:
+
             self.conn.execute(
                 """
                 INSERT OR IGNORE INTO campaign_targets(
@@ -355,6 +377,7 @@ class Database:
         campaign_id: int,
         round_number: int,
     ):
+
         return self.conn.execute(
             """
             SELECT
@@ -362,13 +385,16 @@ class Database:
                 t.title,
                 t.username
             FROM campaign_targets ct
+
             JOIN targets t
                 ON t.chat_id = ct.chat_id
+
             WHERE ct.campaign_id = ?
               AND ct.round_number = ?
               AND ct.status = 'PENDING'
               AND t.enabled = 1
               AND t.archived = 1
+
             ORDER BY t.title COLLATE NOCASE
             """,
             (
@@ -381,6 +407,7 @@ class Database:
         self,
         campaign_target_id: int,
     ) -> None:
+
         self.conn.execute(
             """
             UPDATE campaign_targets
@@ -399,6 +426,7 @@ class Database:
         campaign_target_id: int,
         error: str,
     ) -> None:
+
         self.conn.execute(
             """
             UPDATE campaign_targets
@@ -425,6 +453,7 @@ class Database:
         event_type: str,
         message: str,
     ) -> None:
+
         self.conn.execute(
             """
             INSERT INTO events(
@@ -442,6 +471,7 @@ class Database:
         self.conn.commit()
 
     def history(self, limit: int = 20):
+
         return self.conn.execute(
             """
             SELECT *

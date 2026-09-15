@@ -1,8 +1,6 @@
 import re
 
-from pyrogram import filters
-
-from .dialogs import sync_archived_groups
+from hydrogram import filters
 
 
 HELP_TEXT = """
@@ -30,29 +28,44 @@ $REPEAT 1
 Create campaign:
 
 $MESSAGE
-Your advertising message here
+Your advertising message here.
 $$
 
 Then:
 
 $START
 
-Only archived groups are used as targets.
+Only currently archived groups are used as targets.
 """
 
 
-def register_handlers(app, db, campaign_manager):
+def register_handlers(
+    app,
+    db,
+    campaign_manager,
+):
 
     @app.on_message(
         filters.me
         & filters.private
-        & filters.chat("me")
     )
-    async def command_handler(client, message):
+    async def command_handler(
+        client,
+        message,
+    ):
+
+        # فقط Saved Messages اجازه کنترل Userbot را دارد.
+        if not client.me:
+            return
+
+        if message.chat.id != client.me.id:
+            return
 
         text = message.text or ""
-
         command = text.strip()
+
+        if not command:
+            return
 
         # -------------------------
         # HELP
@@ -73,26 +86,21 @@ def register_handlers(app, db, campaign_manager):
         if command.upper() == "$STATUS":
 
             campaign = db.get_latest_campaign()
-
             targets = db.get_targets()
 
             if campaign:
 
-                status = campaign["status"]
-                round_number = campaign["current_round"]
-                repeat = campaign["repeat_count"]
-
                 campaign_info = (
                     f"Campaign: #{campaign['id']}\n"
-                    f"Status: {status}\n"
-                    f"Round: {round_number}/{repeat}"
+                    f"Status: {campaign['status']}\n"
+                    f"Round: "
+                    f"{campaign['current_round']}/"
+                    f"{campaign['repeat_count']}"
                 )
 
             else:
 
-                campaign_info = (
-                    "Campaign: none"
-                )
+                campaign_info = "Campaign: none"
 
             await message.reply_text(
                 "📊 STATUS\n\n"
@@ -109,6 +117,8 @@ def register_handlers(app, db, campaign_manager):
         # -------------------------
 
         if command.upper() == "$SYNC":
+
+            from .dialogs import sync_archived_groups
 
             count = await sync_archived_groups(
                 client,
@@ -137,7 +147,10 @@ def register_handlers(app, db, campaign_manager):
 
                 return
 
-            lines = ["📋 TARGET QUEUE\n"]
+            lines = [
+                "📋 TARGET QUEUE",
+                "",
+            ]
 
             for index, target in enumerate(
                 targets,
@@ -173,12 +186,15 @@ def register_handlers(app, db, campaign_manager):
         )
 
         if match:
+
             seconds = int(match.group(1))
 
             if seconds < 10:
+
                 await message.reply_text(
                     "Minimum cooldown is 10 seconds."
                 )
+
                 return
 
             db.set_setting(
@@ -203,12 +219,15 @@ def register_handlers(app, db, campaign_manager):
         )
 
         if match:
+
             seconds = int(match.group(1))
 
             if seconds < 60:
+
                 await message.reply_text(
                     "Minimum round cooldown is 60 seconds."
                 )
+
                 return
 
             db.set_setting(
@@ -261,10 +280,9 @@ def register_handlers(app, db, campaign_manager):
 
         if command.upper().startswith("$MESSAGE"):
 
-            body = command[len("$MESSAGE"):].strip()
-
-            if body.startswith("\n"):
-                body = body.strip()
+            body = command[
+                len("$MESSAGE"):
+            ].strip()
 
             if body.endswith("$$"):
                 body = body[:-2].strip()
@@ -310,7 +328,9 @@ def register_handlers(app, db, campaign_manager):
 
             await message.reply_text(
                 (
-                    "▶️ " if success else "⚠️ "
+                    "▶️ "
+                    if success
+                    else "⚠️ "
                 ) + result
             )
 
@@ -363,30 +383,38 @@ def register_handlers(app, db, campaign_manager):
         # -------------------------
 
         if command.upper() == "$CANCEL":
+
             if campaign_manager.running:
+
                 await message.reply_text(
                     "⚠️ Stop the running campaign first."
                 )
+
                 return
 
             campaign = db.get_latest_campaign()
 
             if campaign is None:
+
                 await message.reply_text(
                     "No campaign."
                 )
+
                 return
 
             if campaign["status"] in {
                 "COMPLETED",
                 "CANCELLED",
             }:
+
                 await message.reply_text(
                     (
                         f"Campaign #{campaign['id']} "
-                        f"is already {campaign['status']}."
+                        f"is already "
+                        f"{campaign['status']}."
                     )
                 )
+
                 return
 
             db.mark_campaign_completed(
@@ -416,7 +444,10 @@ def register_handlers(app, db, campaign_manager):
 
                 return
 
-            lines = ["📜 HISTORY\n"]
+            lines = [
+                "📜 HISTORY",
+                "",
+            ]
 
             for event in events:
 

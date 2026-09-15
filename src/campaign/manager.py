@@ -1,6 +1,6 @@
 import asyncio
 
-from pyrogram.errors import FloodWait
+from hydrogram.errors import FloodWait
 
 
 TERMINAL_STATUSES = {
@@ -18,6 +18,7 @@ RESTARTABLE_STATUSES = {
 
 
 class CampaignManager:
+
     def __init__(self, app, db):
         self.app = app
         self.db = db
@@ -34,6 +35,7 @@ class CampaignManager:
         )
 
     async def start(self):
+
         if self.running:
             return False, "Campaign is already running."
 
@@ -56,7 +58,10 @@ class CampaignManager:
         if status not in RESTARTABLE_STATUSES:
             return (
                 False,
-                f"Campaign #{campaign['id']} cannot be started from {status}.",
+                (
+                    f"Campaign #{campaign['id']} "
+                    f"cannot be started from {status}."
+                ),
             )
 
         self.stop_requested = False
@@ -69,6 +74,7 @@ class CampaignManager:
         return True, "Campaign started."
 
     async def stop(self):
+
         if not self.running:
             return "Campaign is not running."
 
@@ -78,29 +84,39 @@ class CampaignManager:
         return "Stop requested."
 
     def pause(self):
+
         if not self.running:
             return "Campaign is not running."
 
         self.paused = True
+
         return "Campaign paused."
 
     def resume(self):
+
         if not self.running:
             return "Campaign is not running."
 
         self.paused = False
+
         return "Campaign resumed."
 
     async def _wait_if_paused(self):
+
         while self.paused and not self.stop_requested:
             await asyncio.sleep(1)
 
-    async def _cooldown(self, seconds: int) -> bool:
+    async def _cooldown(
+        self,
+        seconds: int,
+    ) -> bool:
+
         seconds = max(0, seconds)
 
         remaining = seconds
 
         while remaining > 0:
+
             if self.stop_requested:
                 return False
 
@@ -121,6 +137,7 @@ class CampaignManager:
         default: int,
         minimum: int,
     ) -> int:
+
         raw_value = self.db.get_setting(
             key,
             str(default),
@@ -133,8 +150,14 @@ class CampaignManager:
 
         return max(minimum, value)
 
-    async def _run(self, campaign_id: int):
-        campaign = self.db.get_campaign(campaign_id)
+    async def _run(
+        self,
+        campaign_id: int,
+    ):
+
+        campaign = self.db.get_campaign(
+            campaign_id
+        )
 
         if campaign is None:
             self.task = None
@@ -157,7 +180,6 @@ class CampaignManager:
             minimum=60,
         )
 
-        # Resume from the stored round after a restart.
         current_round = int(
             campaign["current_round"] or 0
         )
@@ -173,10 +195,12 @@ class CampaignManager:
         )
 
         try:
+
             for round_number in range(
                 start_round,
                 repeat_count + 1,
             ):
+
                 if self.stop_requested:
                     break
 
@@ -190,12 +214,15 @@ class CampaignManager:
                     round_number,
                 )
 
-                pending = self.db.get_pending_targets(
-                    campaign_id,
-                    round_number,
+                pending = (
+                    self.db.get_pending_targets(
+                        campaign_id,
+                        round_number,
+                    )
                 )
 
                 for target in pending:
+
                     if self.stop_requested:
                         break
 
@@ -204,11 +231,10 @@ class CampaignManager:
                     if self.stop_requested:
                         break
 
-                    chat_id = target["chat_id"]
-
                     try:
+
                         await self.app.send_message(
-                            chat_id,
+                            target["chat_id"],
                             campaign["message"],
                         )
 
@@ -216,7 +242,9 @@ class CampaignManager:
                             target["id"]
                         )
 
-                        self.db.mark_sent(chat_id)
+                        self.db.mark_sent(
+                            target["chat_id"]
+                        )
 
                         self.db.log_event(
                             "SEND",
@@ -227,6 +255,7 @@ class CampaignManager:
                         )
 
                     except FloodWait as error:
+
                         self.db.mark_campaign_target_failed(
                             target["id"],
                             f"FloodWait: {error.value}s",
@@ -246,6 +275,7 @@ class CampaignManager:
                             break
 
                     except Exception as error:
+
                         self.db.mark_campaign_target_failed(
                             target["id"],
                             str(error),
@@ -268,6 +298,7 @@ class CampaignManager:
                     break
 
                 if round_number < repeat_count:
+
                     self.db.update_campaign_status(
                         campaign_id,
                         "ROUND_WAIT",
@@ -279,17 +310,21 @@ class CampaignManager:
                         break
 
             if self.stop_requested:
+
                 self.db.mark_campaign_completed(
                     campaign_id,
                     status="STOPPED",
                 )
+
             else:
+
                 self.db.mark_campaign_completed(
                     campaign_id,
                     status="COMPLETED",
                 )
 
         except Exception as error:
+
             self.db.mark_campaign_completed(
                 campaign_id,
                 status="FAILED",
@@ -301,6 +336,7 @@ class CampaignManager:
             )
 
         finally:
+
             self.task = None
             self.stop_requested = False
             self.paused = False

@@ -1,37 +1,64 @@
-from pyrogram.enums import ChatType
+from hydrogram import raw
 
 
-GROUP_TYPES = {
-    ChatType.GROUP,
-    ChatType.SUPERGROUP,
-}
+def _get_channel_map(chats):
+    return {
+        chat.id: chat
+        for chat in chats
+        if isinstance(
+            chat,
+            raw.types.Channel,
+        )
+    }
 
 
 async def sync_archived_groups(app, db) -> int:
     """
-    Synchronize the user's currently archived groups.
+    Sync only groups that Telegram reports inside Archive.
 
-    This function does not join, leave, archive, or unarchive anything.
-    It only reads the current Telegram dialog state.
+    Channels, private users and bots are ignored.
     """
 
     db.mark_all_targets_unarchived()
 
+    result = await app.invoke(
+        raw.functions.messages.GetDialogs(
+            offset_date=0,
+            offset_id=0,
+            offset_peer=raw.types.InputPeerEmpty(),
+            limit=100,
+            hash=0,
+            folder_id=1,
+        )
+    )
+
+    channel_map = _get_channel_map(
+        result.chats
+    )
+
     count = 0
 
-    async for dialog in app.get_dialogs():
-        chat = dialog.chat
+    for dialog in result.dialogs:
 
-        if chat.type not in GROUP_TYPES:
+        peer = dialog.peer
+
+        if not isinstance(
+            peer,
+            raw.types.PeerChannel,
+        ):
             continue
 
-        archived = getattr(
-            dialog,
-            "folder_id",
-            None,
-        ) == 1
+        channel_id = peer.channel_id
 
-        if not archived:
+        chat = channel_map.get(
+            channel_id
+        )
+
+        if chat is None:
+            continue
+
+        # Broadcast channels are excluded.
+        if not chat.megagroup:
             continue
 
         db.upsert_target(
@@ -44,26 +71,3 @@ async def sync_archived_groups(app, db) -> int:
         count += 1
 
     return count
-
-
-async def list_archived_groups(app):
-    """Return currently archived groups."""
-
-    results = []
-
-    async for dialog in app.get_dialogs():
-        chat = dialog.chat
-
-        if chat.type not in GROUP_TYPES:
-            continue
-
-        archived = getattr(
-            dialog,
-            "folder_id",
-            None,
-        ) == 1
-
-        if archived:
-            results.append(chat)
-
-    return results

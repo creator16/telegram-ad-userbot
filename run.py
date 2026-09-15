@@ -9,7 +9,6 @@ VENV_DIR = ROOT_DIR / ".venv"
 
 
 def get_venv_python() -> Path:
-    """Return the Python executable inside the local virtual environment."""
 
     if os.name == "nt":
         return VENV_DIR / "Scripts" / "python.exe"
@@ -21,11 +20,10 @@ def main() -> None:
 
     venv_python = get_venv_python()
 
-    # اگر برنامه هنوز داخل virtual environment اجرا نشده،
-    # آن را با Python محیط پروژه دوباره اجرا می‌کنیم.
     if sys.prefix == sys.base_prefix:
 
         if not venv_python.exists():
+
             print(
                 "Virtual environment not found.\n"
                 "Please run setup.py first."
@@ -45,7 +43,6 @@ def main() -> None:
 
         return
 
-    # اجرای مستقیم از داخل venv
     from src.main import main as application_main
 
     application_main()

@@ -1,6 +1,11 @@
-from pyrogram import Client
+from hydrogram import Client
 
-from ..config import API_HASH, API_ID, DATA_DIR, SESSION_NAME
+from ..config import (
+    API_HASH,
+    API_ID,
+    DATA_DIR,
+    SESSION_NAME,
+)
 
 
 app = Client(
@@ -8,4 +13,5 @@ app = Client(
     api_id=API_ID,
     api_hash=API_HASH,
     workdir=str(DATA_DIR),
+    hide_password=True,
 )
