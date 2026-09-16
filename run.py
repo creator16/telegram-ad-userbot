@@ -1,7 +1,23 @@
+import asyncio
 import os
 import subprocess
 import sys
 from pathlib import Path
+
+
+# ---------------------------------------------------------
+# Python 3.14 compatibility bootstrap.
+#
+# Python 3.14 removed implicit event-loop creation from
+# asyncio.get_event_loop(). Hydrogram 0.2.0 still calls it
+# during Client.__init__, so we must ensure a loop exists
+# BEFORE Hydrogram is imported.
+# ---------------------------------------------------------
+
+try:
+    asyncio.get_event_loop()
+except RuntimeError:
+    asyncio.set_event_loop(asyncio.new_event_loop())
 
 
 ROOT_DIR = Path(__file__).resolve().parent
