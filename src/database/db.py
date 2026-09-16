@@ -168,6 +168,56 @@ class Database:
 
         self.conn.commit()
 
+    def sync_targets(self, found: list) -> None:
+        """
+        Atomically mark all targets as unarchived, then
+        re-archive the ones present in `found`.
+
+        Each item in `found` must be a dict with keys:
+            chat_id, title, username
+        """
+
+        try:
+
+            self.conn.execute(
+                """
+                UPDATE targets
+                SET archived = 0
+                """
+            )
+
+            for target in found:
+
+                self.conn.execute(
+                    """
+                    INSERT INTO targets(
+                        chat_id,
+                        title,
+                        username,
+                        archived
+                    )
+                    VALUES (?, ?, ?, 1)
+
+                    ON CONFLICT(chat_id)
+                    DO UPDATE SET
+                        title=excluded.title,
+                        username=excluded.username,
+                        archived=1
+                    """,
+                    (
+                        target["chat_id"],
+                        target["title"],
+                        target["username"],
+                    ),
+                )
+
+            self.conn.commit()
+
+        except Exception:
+
+            self.conn.rollback()
+            raise
+
     def get_targets(self):
 
         return self.conn.execute(

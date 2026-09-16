@@ -1,7 +1,17 @@
 from hydrogram import raw
 
 
-def _get_channel_map(chats):
+def _to_marked_channel_id(
+    raw_channel_id: int,
+) -> int:
+    """
+    Convert a raw Telegram channel/supergroup ID (positive)
+    to the marked peer ID used by Hydrogram (-100xxxxxxxxxx).
+    """
+    return int(f"-100{raw_channel_id}")
+
+
+def _build_channel_map(chats):
     return {
         chat.id: chat
         for chat in chats
@@ -12,62 +22,154 @@ def _get_channel_map(chats):
     }
 
 
+def _build_offset_peer(
+    last_dialog,
+    channel_map,
+):
+    """
+    Build the InputPeer needed to continue GetDialogs
+    pagination from the last dialog we received.
+    """
+
+    peer = last_dialog.peer
+
+    if isinstance(
+        peer,
+        raw.types.PeerChannel,
+    ):
+        chat = channel_map.get(
+            peer.channel_id
+        )
+
+        access_hash = (
+            chat.access_hash
+            if chat
+            else 0
+        )
+
+        return raw.types.InputPeerChannel(
+            channel_id=peer.channel_id,
+            access_hash=access_hash,
+        )
+
+    if isinstance(
+        peer,
+        raw.types.PeerUser,
+    ):
+        return raw.types.InputPeerUser(
+            user_id=peer.user_id,
+            access_hash=0,
+        )
+
+    if isinstance(
+        peer,
+        raw.types.PeerChat,
+    ):
+        return raw.types.InputPeerChat(
+            chat_id=peer.chat_id,
+        )
+
+    return raw.types.InputPeerEmpty()
+
+
+async def _iter_archived_dialogs(app):
+    """
+    Async generator yielding every GetDialogs response
+    for the Archive folder, handling pagination.
+    """
+
+    offset_id = 0
+    offset_date = 0
+    offset_peer = raw.types.InputPeerEmpty()
+
+    while True:
+
+        result = await app.invoke(
+            raw.functions.messages.GetDialogs(
+                offset_date=offset_date,
+                offset_id=offset_id,
+                offset_peer=offset_peer,
+                limit=100,
+                hash=0,
+                folder_id=1,
+            )
+        )
+
+        if not result.dialogs:
+            return
+
+        yield result
+
+        if len(result.dialogs) < 100:
+            return
+
+        last_dialog = result.dialogs[-1]
+
+        channel_map = _build_channel_map(
+            result.chats
+        )
+
+        offset_peer = _build_offset_peer(
+            last_dialog,
+            channel_map,
+        )
+
+        offset_id = (
+            last_dialog.top_message or 0
+        )
+
+        offset_date = 0
+
+
 async def sync_archived_groups(app, db) -> int:
     """
     Sync only groups that Telegram reports inside Archive.
 
-    Channels, private users and bots are ignored.
+    Broadcast channels, private users and bots are ignored.
     """
 
-    db.mark_all_targets_unarchived()
+    found = {}
 
-    result = await app.invoke(
-        raw.functions.messages.GetDialogs(
-            offset_date=0,
-            offset_id=0,
-            offset_peer=raw.types.InputPeerEmpty(),
-            limit=100,
-            hash=0,
-            folder_id=1,
-        )
-    )
+    async for result in _iter_archived_dialogs(app):
 
-    channel_map = _get_channel_map(
-        result.chats
-    )
-
-    count = 0
-
-    for dialog in result.dialogs:
-
-        peer = dialog.peer
-
-        if not isinstance(
-            peer,
-            raw.types.PeerChannel,
-        ):
-            continue
-
-        channel_id = peer.channel_id
-
-        chat = channel_map.get(
-            channel_id
+        channel_map = _build_channel_map(
+            result.chats
         )
 
-        if chat is None:
-            continue
+        for dialog in result.dialogs:
 
-        # Broadcast channels are excluded.
-        if not chat.megagroup:
-            continue
+            peer = dialog.peer
 
-        db.upsert_target(
-            chat_id=chat.id,
-            title=chat.title or "Unknown",
-            username=chat.username,
-            archived=True,
-        )
+            if not isinstance(
+                peer,
+                raw.types.PeerChannel,
+            ):
+                continue
 
-        count += 1
+            chat = channel_map.get(
+                peer.channel_id
+            )
 
-    return count
+            if chat is None:
+                continue
+
+            # Broadcast channels are excluded.
+            if not chat.megagroup:
+                continue
+
+            found[chat.id] = {
+                "chat_id": _to_marked_channel_id(
+                    chat.id
+                ),
+                "title": (
+                    chat.title or "Unknown"
+                ),
+                "username": chat.username,
+            }
+
+    targets = list(found.values())
+
+    # Atomic: mark all unarchived, then re-archive the found ones.
+    db.sync_targets(targets)
+
+    return len(targets)

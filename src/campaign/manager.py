@@ -150,6 +150,87 @@ class CampaignManager:
 
         return max(minimum, value)
 
+    async def _send_to_target(
+        self,
+        campaign,
+        target,
+    ) -> None:
+        """
+        Send the campaign message to a single target.
+
+        On FloodWait, wait the requested time and retry
+        the SAME target instead of marking it as failed.
+        """
+
+        while True:
+
+            if self.stop_requested:
+                return
+
+            await self._wait_if_paused()
+
+            if self.stop_requested:
+                return
+
+            try:
+
+                await self.app.send_message(
+                    target["chat_id"],
+                    campaign["message"],
+                )
+
+                self.db.mark_campaign_target_sent(
+                    target["id"]
+                )
+
+                self.db.mark_sent(
+                    target["chat_id"]
+                )
+
+                self.db.log_event(
+                    "SEND",
+                    (
+                        f"Campaign {campaign['id']}: "
+                        f"sent to {target['title']}"
+                    ),
+                )
+
+                return
+
+            except FloodWait as error:
+
+                self.db.log_event(
+                    "FLOOD_WAIT",
+                    (
+                        "Telegram requested "
+                        f"{error.value}s wait."
+                    ),
+                )
+
+                if not await self._cooldown(
+                    error.value
+                ):
+                    return
+
+                # Loop retries the same target.
+
+            except Exception as error:
+
+                self.db.mark_campaign_target_failed(
+                    target["id"],
+                    str(error),
+                )
+
+                self.db.log_event(
+                    "SEND_ERROR",
+                    (
+                        f"{target['title']}: "
+                        f"{error}"
+                    ),
+                )
+
+                return
+
     async def _run(
         self,
         campaign_id: int,
@@ -184,11 +265,19 @@ class CampaignManager:
             campaign["current_round"] or 0
         )
 
-        start_round = (
-            current_round
-            if current_round >= 1
-            else 1
-        )
+        status = campaign["status"]
+
+        if status == "ROUND_WAIT":
+            # The previous round was already completed.
+            # Move on to the next one.
+            start_round = current_round + 1
+
+        elif current_round >= 1:
+            # Resume the round that was interrupted.
+            start_round = current_round
+
+        else:
+            start_round = 1
 
         self.db.mark_campaign_started(
             campaign_id
@@ -226,68 +315,13 @@ class CampaignManager:
                     if self.stop_requested:
                         break
 
-                    await self._wait_if_paused()
+                    await self._send_to_target(
+                        campaign,
+                        target,
+                    )
 
                     if self.stop_requested:
                         break
-
-                    try:
-
-                        await self.app.send_message(
-                            target["chat_id"],
-                            campaign["message"],
-                        )
-
-                        self.db.mark_campaign_target_sent(
-                            target["id"]
-                        )
-
-                        self.db.mark_sent(
-                            target["chat_id"]
-                        )
-
-                        self.db.log_event(
-                            "SEND",
-                            (
-                                f"Campaign {campaign_id}: "
-                                f"sent to {target['title']}"
-                            ),
-                        )
-
-                    except FloodWait as error:
-
-                        self.db.mark_campaign_target_failed(
-                            target["id"],
-                            f"FloodWait: {error.value}s",
-                        )
-
-                        self.db.log_event(
-                            "FLOOD_WAIT",
-                            (
-                                "Telegram requested "
-                                f"{error.value}s wait."
-                            ),
-                        )
-
-                        if not await self._cooldown(
-                            error.value
-                        ):
-                            break
-
-                    except Exception as error:
-
-                        self.db.mark_campaign_target_failed(
-                            target["id"],
-                            str(error),
-                        )
-
-                        self.db.log_event(
-                            "SEND_ERROR",
-                            (
-                                f"{target['title']}: "
-                                f"{error}"
-                            ),
-                        )
 
                     if not await self._cooldown(
                         target_cooldown
