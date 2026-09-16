@@ -76,6 +76,9 @@ async def _iter_archived_dialogs(app):
     """
     Async generator yielding every GetDialogs response
     for the Archive folder, handling pagination.
+
+    Each dialog returned here is guaranteed by Telegram
+    to belong to folder 1 (Archive).
     """
 
     offset_id = 0
@@ -123,9 +126,12 @@ async def _iter_archived_dialogs(app):
 
 async def sync_archived_groups(app, db) -> int:
     """
-    Sync only groups that Telegram reports inside Archive.
+    Sync only supergroups that Telegram reports inside Archive.
 
     Broadcast channels, private users and bots are ignored.
+
+    A dialog is considered archived ONLY if its raw
+    `folder_id` field equals 1 (Telegram's Archive folder).
     """
 
     found = {}
@@ -137,6 +143,11 @@ async def sync_archived_groups(app, db) -> int:
         )
 
         for dialog in result.dialogs:
+
+            # 🔴 KEY FIX: only accept dialogs that are
+            # actually inside folder 1 (Archive).
+            if dialog.folder_id != 1:
+                continue
 
             peer = dialog.peer
 
@@ -169,7 +180,6 @@ async def sync_archived_groups(app, db) -> int:
 
     targets = list(found.values())
 
-    # Atomic: mark all unarchived, then re-archive the found ones.
     db.sync_targets(targets)
 
     return len(targets)

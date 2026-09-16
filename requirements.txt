@@ -1,5 +1,15 @@
-pyaes==1.6.1
+# Core Telegram client
 hydrogram==0.2.0
+
+# Required by Hydrogram at runtime
+pyaes==1.6.1
+
+# Proxy support (SOCKS5/HTTP)
 PySocks==1.7.1
-python-dotenv==1.2.3
+
+# .env file loading
+python-dotenv==1.0.1
+
+# Optional: faster AES (needs a C compiler).
+# Comment out if installation fails on your machine.
 TgCrypto==1.2.5
